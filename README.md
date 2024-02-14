@@ -69,3 +69,177 @@ Each file in each of these subdirectories is a pickle file, which when loaded wi
     > "sentence_scores": numpy.ndarray -- The output from the hallucination scorer, which is an array of sentence-level hallucination scores
     > "average_score": float -- The average of sentence_scores, so the passage-level hallucination score
 ```
+
+## Running your own Self-Learning LLM
+
+Refer to the experiment files and `experiment_training.py` to see how you can run Self-Questioning, Knowledge Searching, and Model Training. Refer to `experiment_post_training.py` if you would like to perform hallucination scoring on the model after training.
+
+Some quick examples are provided below. Note that you can write your own `do_train` function if you want to customize the model training.
+
+```
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import requests
+import warnings
+
+
+tokenizer = AutoTokenizer.from_pretrained(
+    pretrained_model_name,
+    use_fast=True
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    pretrained_model_name
+)
+
+def prompt_fn(prompt):
+    return f"### System:\nYou are a student who is eager to learn about new things.\n### User:\n{prompt}\n### Assistant:\n"
+
+def extract_response_fn(response):
+    return response.split("### Assistant:\n")[-1]
+
+def search_engine_fn(query: str) -> List[str]:
+    if "CUSTOM_SEARCH_URL" not in os.environ:
+        raise ValueError("The environment variable CUSTOM_SEARCH_URL is not set!")
+    try:
+        url = str(os.environ.get("CUSTOM_SEARCH_URL")) + query
+        response = requests.get(url)
+        result = response.json()
+        return [x["link"] for x in result["items"]]
+    except Exception as e:
+        warnings.warn("Error in knowledge searching. | Error: " + str(e))
+        pass
+    return []
+```
+
+### Self-Learning LLM with Open Generation
+
+```
+from peft import LoraConfig, PeftModel
+from self_learning_open_generation import self_questioning_loop_open_generation
+from self_learning_utils import build_dataset
+from self_learning_training import do_train
+
+while True:
+    outputs = self_questioning_loop_open_generation(
+        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
+        num_iteration=100
+    )
+    print({
+        "curiosity_score": outputs["curiosity_score"],
+        "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"],
+        "self_learning_capability_score": outputs["self_learning_capability_score"],
+        "count_Q_H": len(outputs["prompts_with_hallucination"]),
+        "count_Q_NH": len(outputs["prompts_with_no_hallucination"])
+    })
+
+    questions_for_ds = [p["prompt"] for p in outputs["prompts_with_hallucination"]]
+    ds = build_dataset(questions_for_ds, search_engine_fn)
+
+    ckpt_dir = do_train(
+        ds=ds,
+        questions_with_hallucination=questions_for_ds,
+        prompt_format_fn=prompt_fn,
+        extract_response_fn=extract_response_fn,
+        tokenizer=tokenizer,
+        model_name_or_path=pretrained_model_name,
+        batch_size=4,
+        max_epochs=10,
+        lr=3e-5,
+        deterministic=True
+    )
+
+    peft_config = LoraConfig(
+        r=32,
+        lora_alpha=64,
+        lora_dropout=0.05,
+        target_modules=["q_proj", "v_proj"],
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+    adapter_name = "injected_adapter"
+    trained_unmerged = PeftModel.from_pretrained(
+        model=model,
+        model_id = ckpt_dir + "/injected_adapter",
+        adapter_name=adapter_name,
+        is_trainable=False,
+        config=peft_config,
+        device_map='auto'
+    )
+    model = trained_unmerged.merge_and_unload()
+```
+
+### Self-Learning LLM with Induced Generation
+
+```
+from peft import LoraConfig, PeftModel
+from self_learning_induced_generation import self_questioning_loop_induced_generation
+from self_learning_utils import build_dataset
+from self_learning_training import do_train
+
+while True:
+    outputs = self_questioning_loop_induced_generation(
+        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
+        num_iteration=100
+    )
+    print({
+        "curiosity_score": outputs["curiosity_score"],
+        "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"],
+        "self_learning_capability_score": outputs["self_learning_capability_score"],
+        "count_Q_H": len(outputs["prompts_with_hallucination"]),
+        "count_Q_NH": len(outputs["prompts_with_no_hallucination"])
+    })
+    ...
+```
+
+### Self-Learning LLM with Oracle-Selected
+
+```
+from peft import LoraConfig, PeftModel
+from self_learning_oracle_selected import self_questioning_loop_oracle_selected
+from self_learning_utils import build_dataset
+from self_learning_training import do_train
+
+while True:
+    outputs = self_questioning_loop_oracle_selected(
+        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
+        num_iteration=100
+    )
+    print({
+        "curiosity_score": outputs["curiosity_score"],
+        "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"],
+        "self_learning_capability_score": outputs["self_learning_capability_score"],
+        "count_Q_H": len(outputs["prompts_with_hallucination"]),
+        "count_Q_NH": len(outputs["prompts_with_no_hallucination"])
+    })
+    ...
+```
+
+### Self-Learning LLM with External Prompt
+
+```
+from peft import LoraConfig, PeftModel
+import os
+from self_learning_extrinsic import self_questioning_loop_extrinsic_inspiration
+from self_learning_utils import build_dataset
+from self_learning_training import do_train
+
+os.environ["SERP_API_KEY"] = "..."
+
+while True:
+    outputs = self_questioning_loop_extrinsic_inspiration(
+        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
+        num_iteration=100
+    )
+    print({
+        "curiosity_score": outputs["curiosity_score"],
+        "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"],
+        "self_learning_capability_score": outputs["self_learning_capability_score"],
+        "count_Q_H": len(outputs["prompts_with_hallucination"]),
+        "count_Q_NH": len(outputs["prompts_with_no_hallucination"])
+    })
+    ...
+```
+
+## Disclaimer
+
+This repository was created for reproducibility purposes of our paper. All work is intended only for scientific research. We are not responsible for the actions of other parties who use this repository.

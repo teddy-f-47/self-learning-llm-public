@@ -2,7 +2,7 @@
 
 ***Teddy Ferdinan, Jan Kocoń, Przemysław Kazienko***
 
-*Paper to be submitted to arXiv and ACL 2024*
+<https://arxiv.org/abs/2402.09147>
 
 ## Create a virtual environment (optional)
 
@@ -243,3 +243,16 @@ while True:
 ## Disclaimer
 
 This repository was created for reproducibility purposes of our paper. All work is intended only for scientific research. We are not responsible for the actions of other parties who use this repository.
+
+## Citation
+
+```
+@misc{ferdinan2024unknown,
+    title={Into the Unknown: Self-Learning Large Language Models}, 
+    author={Teddy Ferdinan and Jan Kocoń and Przemysław Kazienko},
+    year={2024},
+    eprint={2402.09147},
+    archivePrefix={arXiv},
+    primaryClass={cs.AI}
+}
+```

@@ -13,8 +13,8 @@ from self_learning_utils import (
 
 
 def self_questioning_loop_open_generation(
-        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
-        num_iteration=100, verbose=False
+        tokenizer, model, prompt_fn, extract_response_fn, num_iteration=100,
+        verbose=False, pretrained_model_name=None, generation_config=None
     ) -> Dict:
     h_scorer = HallucinationScorer()
 
@@ -23,13 +23,13 @@ def self_questioning_loop_open_generation(
 
     for iteration_idx in tqdm(range(num_iteration)):
         prompt1 = "Propose three topics that you would like to learn more about. Answer with only the three proposed topics concisely without elaboration."
-        topics_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt1, pretrained_model_name)
+        topics_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt1, pretrained_model_name, generation_config)
 
         prompt2 = f"Consider these topics: {topics_to_learn}. Propose only one question to query information about which you lack knowledge. Answer with only the proposed question concisely without elaboration."
-        question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name)
+        question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name, generation_config)
 
-        passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
-        samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
+        passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
+        samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
 
         h_scorer_output = h_scorer.get_hallucination_score(
             topics_to_learn, question_to_learn, passage, samples

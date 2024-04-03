@@ -20,8 +20,8 @@ from self_learning_utils import (
 
 
 def self_questioning_loop_oracle_selected(
-        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
-        num_iteration=20, verbose=False
+        tokenizer, model, prompt_fn, extract_response_fn, num_iteration=20,
+        verbose=False, pretrained_model_name=None, generation_config=None
     ) -> Dict:
     h_scorer = HallucinationScorer()
     embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L12-v2", device="cpu")
@@ -39,10 +39,10 @@ def self_questioning_loop_oracle_selected(
         new_topics = random_transform_point_in_topic_embedding_space(topic_embedding_space=topic_embedding_space, all_nouns=all_nouns, initial_point=random_point)
 
         prompt2 = f"Consider these topics: {new_topics}. Propose only one question to query information about which you lack knowledge. Answer with only the proposed question concisely without elaboration."
-        question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name)
+        question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name, generation_config)
 
-        passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
-        samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
+        passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
+        samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
 
         h_scorer_output = h_scorer.get_hallucination_score(
             new_topics, question_to_learn, passage, samples

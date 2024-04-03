@@ -204,6 +204,7 @@ class Curator():
         return output
 
 def generate(tokenizer, model, prompt_fn, extract_response_fn, prompt, generation_config):
+    model.eval()
     prompt = prompt_fn(prompt)
     input_tokens = tokenizer(
         prompt, add_special_tokens=False, return_tensors="pt"
@@ -261,25 +262,51 @@ def generate_response_with_temperature(
     )
 
 def produce_passage(
-        tokenizer, model, prompt_fn, extract_response_fn, prompt, pretrained_model_name=None
+        tokenizer, model, prompt_fn, extract_response_fn, prompt,
+        pretrained_model_name=None, generation_config=None
     ):
-    model.eval()
-    passage_generation_config = GenerationConfig.from_pretrained(
-        pretrained_model_name, do_sample=False, repetition_penalty=1.1,
-        min_new_tokens=1, max_new_tokens=128
-    )
+    if (
+        (pretrained_model_name is None and generation_config is None) or
+        (pretrained_model_name is not None and generation_config is not None)
+    ):
+        raise ValueError("You must provide either pretrained_model_name or generation_config.")
+    if generation_config is None:
+        passage_generation_config = GenerationConfig.from_pretrained(
+            pretrained_model_name, do_sample=False, repetition_penalty=1.1,
+            min_new_tokens=1, max_new_tokens=128
+        )
+    else:
+        passage_generation_config = copy.deepcopy(generation_config)
+        passage_generation_config.do_sample = False
+        passage_generation_config.repetition_penalty = 1.1
+        passage_generation_config.min_new_tokens = 1
+        passage_generation_config.max_new_tokens = 128
     return generate(
         tokenizer, model, prompt_fn, extract_response_fn, prompt, passage_generation_config
     )
 
 def produce_samples(
-        tokenizer, model, prompt_fn, extract_response_fn, prompt, pretrained_model_name=None
+        tokenizer, model, prompt_fn, extract_response_fn, prompt,
+        pretrained_model_name=None, generation_config=None
     ):
-    model.eval()
-    samples_generation_config = GenerationConfig.from_pretrained(
-        pretrained_model_name, do_sample=True, repetition_penalty=1.1,
-        temperature=1.0, num_return_sequences=10, min_new_tokens=1, max_new_tokens=128
-    )
+    if (
+        (pretrained_model_name is None and generation_config is None) or
+        (pretrained_model_name is not None and generation_config is not None)
+    ):
+        raise ValueError("You must provide either pretrained_model_name or generation_config.")
+    if generation_config is None:
+        samples_generation_config = GenerationConfig.from_pretrained(
+            pretrained_model_name, do_sample=True, repetition_penalty=1.1,
+            temperature=1.0, num_return_sequences=10, min_new_tokens=1, max_new_tokens=128
+        )
+    else:
+        samples_generation_config = copy.deepcopy(generation_config)
+        samples_generation_config.do_sample = True
+        samples_generation_config.repetition_penalty = 1.1
+        samples_generation_config.temperature = 1.0
+        samples_generation_config.num_return_sequences = 10
+        samples_generation_config.min_new_tokens = 1
+        samples_generation_config.max_new_tokens = 128
     return generate(
         tokenizer, model, prompt_fn, extract_response_fn, prompt, samples_generation_config
     )
@@ -330,7 +357,6 @@ def calculate_brevity_coefficient(text_lengths: List[float]) -> float:
     avg_text_len_diff = statistics.fmean([abs(x - assumed_ideal_sentence_len) for x in text_lengths])
     if avg_text_len_diff <= 50:
         return 1
-    avg_text_len_diff = 1e-7 if avg_text_len_diff == 0 else avg_text_len_diff
     brevity_coefficient = 1 - (avg_text_len_diff / assumed_ideal_sentence_len) + 0.5
     return brevity_coefficient
 

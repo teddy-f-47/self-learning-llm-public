@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM, GenerationConfig
 from typing import List
 import lightning as pl
 import requests
@@ -26,9 +26,9 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 experiment_repeats = 10
-pretrained_model_name = "mistralai/Mistral-7B-Instruct-v0.2"
+pretrained_model_name = "RWKV/rwkv-4-world-7b"
 num_curator_workers = 1
-verbose = False
+verbose = True # False
 do_information_retrieval = False
 dir_result_dump = "result_dump"
 dir_ds_dump = "dataset_dump"
@@ -37,38 +37,50 @@ os.makedirs(dir_ds_dump, exist_ok=True)
 
 tokenizer = AutoTokenizer.from_pretrained(
     pretrained_model_name,
+    trust_remote_code=True,
     use_fast=True
 )
-model_config = AutoConfig.from_pretrained(pretrained_model_name)
+model_config = AutoConfig.from_pretrained(pretrained_model_name, trust_remote_code=True)
 model_vocab_size = model_config.vocab_size
 print(f"model_config.vocab_size: {model_config.vocab_size}")
 print(f"default len(tokenizer): {len(tokenizer)}")
 
-if model_vocab_size > len(tokenizer):
-    model_vocab_size_diff = model_vocab_size - len(tokenizer)
-    additional_special_tokens = [f"<pad{token_id}>" for token_id in range(model_vocab_size_diff)]
-    tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
-    print(f"extended len(tokenizer): {len(tokenizer)}")
+# if model_vocab_size > len(tokenizer):
+    # model_vocab_size_diff = model_vocab_size - len(tokenizer)
+    # additional_special_tokens = [f"<pad{token_id}>" for token_id in range(model_vocab_size_diff)]
+    # tokenizer.add_special_tokens({"additional_special_tokens": additional_special_tokens})
+    # print(f"extended len(tokenizer): {len(tokenizer)}")
 
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.padding_side = "left"
 print(f"tokenizer.pad_token: {tokenizer.pad_token}")
 print(f"tokenizer.eos_token: {tokenizer.eos_token}")
 
+generation_config = GenerationConfig.from_model_config(model_config)
+generation_config.eos_token_id = 0
+generation_config.pad_token_id = 0
+generation_config.top_p = 1.0
+generation_config.top_k = 50
+
 model = AutoModelForCausalLM.from_pretrained(
-    pretrained_model_name
+    pretrained_model_name,
+    trust_remote_code=True,
+    torch_dtype=torch.float16
 )
-for param in model.parameters():
-    param.requires_grad = False
 model.to(torch.device("cuda"))
 
-def prompt_fn(prompt):
-    text = "<s>[INST] You are a student who is eager to learn about new things. [/INST]"
-    text = text + "I am a student who is eager to learn about new things. I am aware of my lack of knowledge about some things.</s> "
-    return text + f"[INST] {prompt} [/INST]"
+def prompt_fn(input):
+    instruction = "You are a student who is eager to learn about new things."
+    # instruction = instruction.strip().replace('\r\n','\n').replace('\n\n','\n')
+    input = input.strip().replace('\r\n','\n').replace('\n\n','\n')
+    return f"""Instruction: {instruction}
+
+Input: {input}
+
+Response:"""
 
 def extract_response_fn(response):
-    return response.split(" [/INST]")[-1]
+    return response.split("Response:")[-1]
 
 def search_engine_fn(query: str) -> List[str]:
     if "GOOGLE_CUSTOM_SEARCH_URL" not in os.environ:
@@ -100,7 +112,8 @@ for experiment_idx in range(experiment_repeats):
 
     outputs = self_questioning_loop_induced_generation(
         tokenizer, model, prompt_fn, extract_response_fn, num_iteration=num_iteration,
-        verbose=verbose, pretrained_model_name=pretrained_model_name
+        verbose=verbose,
+        generation_config=generation_config
     )
 
     wandb.log({"curiosity_score": outputs["curiosity_score"], "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"], "self_learning_capability_score": outputs["self_learning_capability_score"]})

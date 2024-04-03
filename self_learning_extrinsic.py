@@ -17,11 +17,11 @@ from self_learning_utils import (
 
 
 def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
-    if "SERP_API_KEY" not in os.environ:
-        raise ValueError("The environment variable SERP_API_KEY is not set!")
     os.makedirs("storage", exist_ok=True)
     cache_filepath = f"storage/cached_google_trends{iteration_idx}.pickle"
     if not use_cache or not os.path.isfile(cache_filepath):
+        if "SERP_API_KEY" not in os.environ:
+            raise ValueError("The environment variable SERP_API_KEY is not set!")
         serp_api_params = {
             "engine": "google_trends_trending_now",
             "frequency": "realtime",
@@ -43,8 +43,8 @@ def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
     return topics, cache_is_used
 
 def self_questioning_loop_extrinsic_inspiration(
-        pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
-        num_iteration=2, use_cache=True, verbose=False
+        tokenizer, model, prompt_fn, extract_response_fn, num_iteration=2, use_cache=True,
+        verbose=False, pretrained_model_name=None, generation_config=None
     ) -> Dict:
     h_scorer = HallucinationScorer()
 
@@ -58,10 +58,10 @@ def self_questioning_loop_extrinsic_inspiration(
 
         for new_topic_idx, new_topics in enumerate(list_of_new_topics):
             prompt2 = f"Consider these topics: {new_topics}. Propose only one question to query information about which you lack knowledge. Answer with only the proposed question concisely without elaboration."
-            question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name)
+            question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name, generation_config)
 
-            passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
-            samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name)
+            passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
+            samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
 
             h_scorer_output = h_scorer.get_hallucination_score(
                 new_topics, question_to_learn, passage, samples

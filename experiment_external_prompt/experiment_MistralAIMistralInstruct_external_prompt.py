@@ -96,8 +96,8 @@ wandb_logger = wandb.init(
 )
 
 outputs = self_questioning_loop_extrinsic_inspiration(
-    pretrained_model_name, tokenizer, model, prompt_fn, extract_response_fn,
-    num_iteration=num_iteration, use_cache=True, verbose=verbose
+    tokenizer, model, prompt_fn, extract_response_fn, num_iteration=num_iteration,
+    use_cache=True, verbose=verbose, pretrained_model_name=pretrained_model_name
 )
 
 wandb.log({"curiosity_score": outputs["curiosity_score"], "knowledge_limit_awareness_score": outputs["knowledge_limit_awareness_score"], "self_learning_capability_score": outputs["self_learning_capability_score"]})

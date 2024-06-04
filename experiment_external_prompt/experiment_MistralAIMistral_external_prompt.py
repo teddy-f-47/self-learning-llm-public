@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
+from dotenv import load_dotenv
 from typing import List
 import lightning as pl
 import requests
@@ -13,6 +14,7 @@ from self_learning_extrinsic import self_questioning_loop_extrinsic_inspiration
 from self_learning_utils import build_dataset
 
 
+load_dotenv()
 wandb.login()
 nltk.download('punkt')
 
@@ -36,7 +38,8 @@ os.makedirs(dir_ds_dump, exist_ok=True)
 
 tokenizer = AutoTokenizer.from_pretrained(
     pretrained_model_name,
-    use_fast=True
+    use_fast=True,
+    token=os.getenv('hf_personal_access_token')
 )
 model_config = AutoConfig.from_pretrained(pretrained_model_name)
 model_vocab_size = model_config.vocab_size
@@ -55,7 +58,8 @@ print(f"tokenizer.pad_token: {tokenizer.pad_token}")
 print(f"tokenizer.eos_token: {tokenizer.eos_token}")
 
 model = AutoModelForCausalLM.from_pretrained(
-    pretrained_model_name
+    pretrained_model_name,
+    token=os.getenv('hf_personal_access_token')
 )
 for param in model.parameters():
     param.requires_grad = False
@@ -83,12 +87,12 @@ def search_engine_fn(query: str) -> List[str]:
     return []
 
 
-num_iteration = 2
+num_iteration = 10
 
 wandb_logger = wandb.init(
     project="SelfLearningFramework_v2",
     config={
-        "batched_inference": False,
+        "batched_inference": True,
         "method": "external_prompt",
         "pretrained_model_name": pretrained_model_name,
         "num_iteration": num_iteration

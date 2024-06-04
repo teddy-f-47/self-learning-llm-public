@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM, GenerationConfig
+from dotenv import load_dotenv
 from typing import List
 import lightning as pl
 import requests
@@ -9,10 +10,11 @@ import wandb
 import nltk
 import os
 
-from self_learning_open_generation import self_questioning_loop_open_generation
+from self_learning_open_generation import self_questioning_loop_open_generation_batched
 from self_learning_utils import build_dataset
 
 
+load_dotenv()
 wandb.login()
 nltk.download('punkt')
 
@@ -27,7 +29,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 pretrained_model_name = "RWKV/v5-Eagle-7B-HF"
 num_curator_workers = 1
-verbose = True # False
+verbose = False
 do_information_retrieval = False
 dir_result_dump = "result_dump"
 dir_ds_dump = "dataset_dump"
@@ -93,21 +95,23 @@ def search_engine_fn(query: str) -> List[str]:
     return []
 
 
-num_iteration = 100
+num_iteration = 3000
 
 wandb_logger = wandb.init(
     project="SelfLearningFramework_v2",
     config={
-        "batched_inference": False,
+        "batched_inference": True,
         "method": "open_generation",
         "pretrained_model_name": pretrained_model_name,
         "num_iteration": num_iteration
     }
 )
 
-outputs = self_questioning_loop_open_generation(
-    tokenizer, model, prompt_fn, extract_response_fn, num_iteration=num_iteration,
-    verbose=verbose,
+batch_size = 256
+outputs = self_questioning_loop_open_generation_batched(
+    tokenizer, model, prompt_fn, extract_response_fn, batch_size,
+    num_iteration=num_iteration, verbose=verbose, self_check_gpt_mode='NLI',
+    use_cache=True,
     generation_config=generation_config
 )
 

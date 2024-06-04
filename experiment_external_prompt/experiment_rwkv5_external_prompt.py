@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM, GenerationConfig
+from dotenv import load_dotenv
 from typing import List
 import lightning as pl
 import requests
@@ -13,6 +14,7 @@ from self_learning_extrinsic import self_questioning_loop_extrinsic_inspiration
 from self_learning_utils import build_dataset
 
 
+load_dotenv()
 wandb.login()
 nltk.download('punkt')
 
@@ -27,7 +29,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 pretrained_model_name = "RWKV/v5-Eagle-7B-HF"
 num_curator_workers = 1
-verbose = True # False
+verbose = False
 do_information_retrieval = False
 dir_result_dump = "result_dump"
 dir_ds_dump = "dataset_dump"
@@ -93,12 +95,12 @@ def search_engine_fn(query: str) -> List[str]:
     return []
 
 
-num_iteration = 2
+num_iteration = 10
 
 wandb_logger = wandb.init(
     project="SelfLearningFramework_v2",
     config={
-        "batched_inference": False,
+        "batched_inference": True,
         "method": "external_prompt",
         "pretrained_model_name": pretrained_model_name,
         "num_iteration": num_iteration

@@ -24,3 +24,6 @@ scikit-learn
 umap-learn
 wandb
 google-search-results
+evaluate
+rouge_score
+python-dotenv

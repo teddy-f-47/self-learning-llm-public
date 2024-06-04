@@ -1,5 +1,0 @@
-,pretrained_model_name,curiosity_score,knowledge_limit_awareness_score,self_learning_capability_score
-0,mistralai/Mistral-7B-Instruct-v0.2,0.95,0.35,0.6499999999999999
-1,Intel/neural-chat-7b-v3-3,0.95,0.55,0.75
-2,TinyLlama/TinyLlama-1.1B-Chat-v1.0,0.0584250000000001,0.65,0.35421250000000004
-3,mistralai/Mistral-7B-v0.1,0.04987499999999999,0.8,0.4249375

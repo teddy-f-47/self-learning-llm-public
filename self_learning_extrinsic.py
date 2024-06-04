@@ -1,4 +1,5 @@
 from serpapi import GoogleSearch as GoogleSerpAPI
+from dotenv import load_dotenv
 from typing import Dict
 from tqdm import tqdm
 import pickle
@@ -16,7 +17,14 @@ from self_learning_utils import (
 )
 
 
+def prompt_engineering_for_question_generation(input: str) -> str:
+    return f"Consider these topics: {input}. Propose only one question about something that you have little or no knowledge. Answer with only the proposed question concisely without elaboration."
+
+def prompt_engineering_for_passage_or_samples(input: str) -> str:
+    return f"Answer concisely with only one sentence. {input}"
+
 def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
+    load_dotenv()
     os.makedirs("storage", exist_ok=True)
     cache_filepath = f"storage/cached_google_trends{iteration_idx}.pickle"
     if not use_cache or not os.path.isfile(cache_filepath):
@@ -32,7 +40,7 @@ def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
         gtrends = serp_api_output.get_dict()
         realtime_searches = gtrends["realtime_searches"]
         topics = [rs["title"] for rs in realtime_searches]
-        topics = topics[:20]
+        topics = topics[:100]
         with open(cache_filepath, 'wb') as dump_handle:
             pickle.dump(topics, dump_handle, protocol=pickle.HIGHEST_PROTOCOL)
         cache_is_used = False
@@ -42,6 +50,8 @@ def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
         cache_is_used = True
     return topics, cache_is_used
 
+# it doesn't make sense to make the batched generation version for this function
+# because we need to wait for at least one hour for each new set of trends anyway
 def self_questioning_loop_extrinsic_inspiration(
         tokenizer, model, prompt_fn, extract_response_fn, num_iteration=2, use_cache=True,
         verbose=False, pretrained_model_name=None, generation_config=None
@@ -57,11 +67,11 @@ def self_questioning_loop_extrinsic_inspiration(
         subprocessing_start_time = time.time()
 
         for new_topic_idx, new_topics in enumerate(list_of_new_topics):
-            prompt2 = f"Consider these topics: {new_topics}. Propose only one question to query information about which you lack knowledge. Answer with only the proposed question concisely without elaboration."
+            prompt2 = prompt_engineering_for_question_generation(new_topics)
             question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name, generation_config)
 
-            passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
-            samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, question_to_learn, pretrained_model_name, generation_config)
+            passage = produce_passage(tokenizer, model, prompt_fn, extract_response_fn, prompt_engineering_for_passage_or_samples(question_to_learn), pretrained_model_name, generation_config)
+            samples = produce_samples(tokenizer, model, prompt_fn, extract_response_fn, prompt_engineering_for_passage_or_samples(question_to_learn), pretrained_model_name, generation_config)
 
             h_scorer_output = h_scorer.get_hallucination_score(
                 new_topics, question_to_learn, passage, samples
@@ -92,7 +102,8 @@ def self_questioning_loop_extrinsic_inspiration(
             time_until_next_iter = 3600 - elapsed_time + 10
             print(f"Already elapsed time: {elapsed_time} seconds")
             print(f"Time until next iteration: {time_until_next_iter} seconds")
-            time.sleep(time_until_next_iter)
+            if time_until_next_iter > 0:
+                time.sleep(time_until_next_iter)
         else:
             print("Cache was used, hence going to the next iteration right away.")
 

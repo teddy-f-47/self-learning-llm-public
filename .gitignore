@@ -159,3 +159,4 @@ result_dump/
 dataset_dump/
 zxcv*
 *.zip
+slurm_outputs/

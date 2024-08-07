@@ -45,6 +45,7 @@ def get_google_trends_trending_now(iteration_idx, use_cache=True) -> str:
             pickle.dump(topics, dump_handle, protocol=pickle.HIGHEST_PROTOCOL)
         cache_is_used = False
     else:
+        print(f'Using cache {cache_filepath}...')
         with open(cache_filepath, 'rb') as dump_handle:
             topics = pickle.load(dump_handle)
         cache_is_used = True
@@ -92,6 +93,7 @@ def self_questioning_loop_extrinsic_inspiration(
                 prompts_with_no_hallucination.append(h_scorer_output)
 
         subprocessing_end_time = time.time()
+        print(f'cache_is_used: {cache_is_used}')
 
         # Real-time Google Trends is updated hourly, so let's sleep 30 minutes
         # (assuming the processing of each batch of trends also takes about 30 minutes, 30+30=60)
@@ -119,7 +121,8 @@ def self_questioning_loop_extrinsic_inspiration(
         len(prompts_with_hallucination)+len(prompts_with_no_hallucination)
     )
 
-    self_learning_capability_score = self_learning_capability_measure(
+    self_learning_capability_score, brevity_coefficient = self_learning_capability_measure(
+        proposed_questions,
         curiosity_score,
         knowledge_limit_awareness_score
     )
@@ -135,6 +138,7 @@ def self_questioning_loop_extrinsic_inspiration(
         "pretrained_model_name": pretrained_model_name,
         "curiosity_score": curiosity_score,
         "knowledge_limit_awareness_score": knowledge_limit_awareness_score,
+        "brevity_coefficient": brevity_coefficient,
         "self_learning_capability_score": self_learning_capability_score,
         "proposed_questions": proposed_questions,
         "proposed_questions_labels": proposed_questions_labels,

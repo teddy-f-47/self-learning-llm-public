@@ -82,7 +82,8 @@ def self_questioning_loop_oracle_selected(
         len(prompts_with_hallucination)+len(prompts_with_no_hallucination)
     )
 
-    self_learning_capability_score = self_learning_capability_measure(
+    self_learning_capability_score, brevity_coefficient = self_learning_capability_measure(
+        proposed_questions,
         curiosity_score,
         knowledge_limit_awareness_score
     )
@@ -98,6 +99,7 @@ def self_questioning_loop_oracle_selected(
         "pretrained_model_name": pretrained_model_name,
         "curiosity_score": curiosity_score,
         "knowledge_limit_awareness_score": knowledge_limit_awareness_score,
+        "brevity_coefficient": brevity_coefficient,
         "self_learning_capability_score": self_learning_capability_score,
         "proposed_questions": proposed_questions,
         "proposed_questions_labels": proposed_questions_labels,
@@ -194,7 +196,8 @@ def self_questioning_loop_oracle_selected_batched(
         len(prompts_with_hallucination)+len(prompts_with_no_hallucination)
     )
 
-    self_learning_capability_score = self_learning_capability_measure(
+    self_learning_capability_score, brevity_coefficient = self_learning_capability_measure(
+        proposed_questions,
         curiosity_score,
         knowledge_limit_awareness_score
     )
@@ -210,6 +213,7 @@ def self_questioning_loop_oracle_selected_batched(
         "pretrained_model_name": pretrained_model_name,
         "curiosity_score": curiosity_score,
         "knowledge_limit_awareness_score": knowledge_limit_awareness_score,
+        "brevity_coefficient": brevity_coefficient,
         "self_learning_capability_score": self_learning_capability_score,
         "proposed_questions": proposed_questions,
         "proposed_questions_labels": proposed_questions_labels,

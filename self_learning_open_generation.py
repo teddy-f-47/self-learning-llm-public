@@ -27,7 +27,7 @@ def prompt_engineering_for_passage_or_samples(input: str) -> str:
 
 def self_questioning_loop_open_generation(
         tokenizer, model, prompt_fn, extract_response_fn, num_iteration=100,
-        verbose=False, pretrained_model_name=None, generation_config=None
+        verbose=False, pretrained_model_name=None, generation_config=None, baseline_mode=False
     ) -> Dict:
     h_scorer = HallucinationScorer()
 
@@ -37,6 +37,8 @@ def self_questioning_loop_open_generation(
     for iteration_idx in tqdm(range(num_iteration)):
         prompt1 = prompt_engineering_for_topic_generation()
         topics_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt1, pretrained_model_name, generation_config)
+        if baseline_mode:
+            topics_to_learn = 'AI, blockchain, cryptocurrency'
 
         prompt2 = prompt_engineering_for_question_generation(topics_to_learn)
         question_to_learn = generate_response(tokenizer, model, prompt_fn, extract_response_fn, prompt2, pretrained_model_name, generation_config)
@@ -74,7 +76,8 @@ def self_questioning_loop_open_generation(
         len(prompts_with_hallucination)+len(prompts_with_no_hallucination)
     )
 
-    self_learning_capability_score = self_learning_capability_measure(
+    self_learning_capability_score, brevity_coefficient = self_learning_capability_measure(
+        proposed_questions,
         curiosity_score,
         knowledge_limit_awareness_score
     )
@@ -90,6 +93,7 @@ def self_questioning_loop_open_generation(
         "pretrained_model_name": pretrained_model_name,
         "curiosity_score": curiosity_score,
         "knowledge_limit_awareness_score": knowledge_limit_awareness_score,
+        "brevity_coefficient": brevity_coefficient,
         "self_learning_capability_score": self_learning_capability_score,
         "proposed_questions": proposed_questions,
         "proposed_questions_labels": proposed_questions_labels,
@@ -100,11 +104,13 @@ def self_questioning_loop_open_generation(
 def self_questioning_loop_open_generation_batched(
         tokenizer, model, prompt_fn, extract_response_fn, batch_size, num_iteration=100,
         temperature=1.0, verbose=False, self_check_gpt_mode='NLI', use_cache=False,
-        pretrained_model_name=None, generation_config=None
+        pretrained_model_name=None, generation_config=None, baseline_mode=False
     ) -> Dict:
     if not use_cache or not os.path.exists('storage/open_topics.pickle'):
         prompts = [prompt_engineering_for_topic_generation() for iteration_idx in range(num_iteration)]
         topics = generate_response_with_temperature(tokenizer, model, prompt_fn, extract_response_fn, prompts, temperature, pretrained_model_name, generation_config, batch_size)
+        if baseline_mode:
+            topics = ['AI, blockchain, cryptocurrency' for i in range(num_iteration)]
         with open('storage/open_topics.pickle', 'wb') as dumpfile:
             pickle.dump(topics, dumpfile, protocol=pickle.HIGHEST_PROTOCOL)
     else:
@@ -176,7 +182,8 @@ def self_questioning_loop_open_generation_batched(
         len(prompts_with_hallucination)+len(prompts_with_no_hallucination)
     )
 
-    self_learning_capability_score = self_learning_capability_measure(
+    self_learning_capability_score, brevity_coefficient = self_learning_capability_measure(
+        proposed_questions,
         curiosity_score,
         knowledge_limit_awareness_score
     )
@@ -192,6 +199,7 @@ def self_questioning_loop_open_generation_batched(
         "pretrained_model_name": pretrained_model_name,
         "curiosity_score": curiosity_score,
         "knowledge_limit_awareness_score": knowledge_limit_awareness_score,
+        "brevity_coefficient": brevity_coefficient,
         "self_learning_capability_score": self_learning_capability_score,
         "proposed_questions": proposed_questions,
         "proposed_questions_labels": proposed_questions_labels,

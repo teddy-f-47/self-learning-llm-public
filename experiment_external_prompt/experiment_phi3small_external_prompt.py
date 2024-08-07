@@ -71,7 +71,7 @@ def prompt_fn(prompt):
     return f"<|endoftext|><|user|>\nYou are a student who is eager to learn about new things. {prompt} <|end|>\n<|assistant|>\n"
 
 def extract_response_fn(response):
-    return response.split("<|assistant|>\n")[-1]
+    return response.split("<|assistant|>")[-1].strip()
 
 def search_engine_fn(query: str) -> List[str]:
     if "GOOGLE_CUSTOM_SEARCH_URL" not in os.environ:

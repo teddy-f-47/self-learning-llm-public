@@ -381,40 +381,81 @@ def generate(
         tokenizer, model, prompt_fn, extract_response_fn, prompt: str,
         generation_config
     ):
-    model.eval()
-    prompt = prompt_fn(prompt)
-    input_tokens = tokenizer(
-        prompt, add_special_tokens=False, return_tensors="pt"
-    ).to(torch.device("cuda"))
-    with torch.inference_mode():
-        generated_ids = model.generate(**input_tokens, generation_config=generation_config)
-    raw_pred = tokenizer.batch_decode(
-        generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
-    )
-    pred = [extract_response_fn(rp) for rp in raw_pred]
+    if model == 'baseline':
+        pred = []
+        for pred_idx in range(generation_config.num_return_sequences):
+            pred.append(prompt + '...')
+    else:
+        model.eval()
+        prompt = prompt_fn(prompt)
+        input_tokens = tokenizer(
+            prompt, add_special_tokens=False, return_tensors="pt"
+        ).to(torch.device("cuda"))
+        with torch.inference_mode():
+            generated_ids = model.generate(**input_tokens, generation_config=generation_config)
+        raw_pred = tokenizer.batch_decode(
+            generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True
+        )
+        pred = [extract_response_fn(rp) for rp in raw_pred]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            pred = [p.replace(spectok, '') for p in pred]
     return pred
 
 def batch_generate(
         tokenizer, model, prompt_fn, extract_response_fn, prompts: List[str],
         generation_config, batch_size=4
     ):
-    model.eval()
-    prompts = [prompt_fn(p) for p in prompts]
-    batches = np.array_split(np.asarray(prompts), math.ceil(len(prompts)/batch_size))
-    raw_preds = []
-    for batch in tqdm(batches):
-        input_tokens = tokenizer(
-            batch.tolist(), padding=True, add_special_tokens=False, return_tensors="pt"
-        ).to(torch.device("cuda"))
-        with torch.inference_mode():
-            generated_ids = model.generate(
-                **input_tokens, generation_config=generation_config
+    if model == 'baseline':
+        preds = []
+        for prompt in prompts:
+            for pred_idx in range(generation_config.num_return_sequences):
+                preds.append(prompt + '...')
+    else:
+        model.eval()
+        prompts = [prompt_fn(p) for p in prompts]
+        batches = np.array_split(np.asarray(prompts), math.ceil(len(prompts)/batch_size))
+        raw_preds = []
+        for batch in tqdm(batches):
+            input_tokens = tokenizer(
+                batch.tolist(), padding=True, add_special_tokens=False, return_tensors="pt"
+            ).to(torch.device("cuda"))
+            with torch.inference_mode():
+                generated_ids = model.generate(
+                    **input_tokens, generation_config=generation_config
+                )
+            output_seqs = tokenizer.batch_decode(
+                generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True
             )
-        output_seqs = tokenizer.batch_decode(
-            generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True
-        )
-        raw_preds.extend(output_seqs)
-    preds = [extract_response_fn(p) for p in raw_preds]
+            raw_preds.extend(output_seqs)
+        preds = [extract_response_fn(p) for p in raw_preds]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            preds = [p.replace(spectok, '') for p in preds]
     return preds
 
 def generate_response(
@@ -600,6 +641,8 @@ def random_transform_point_in_topic_embedding_space(
 def calculate_brevity_coefficient(text_lengths: List[float]) -> float:
     assumed_ideal_sentence_len = 100
     avg_text_len_diff = statistics.fmean([abs(x - assumed_ideal_sentence_len) for x in text_lengths])
+    if avg_text_len_diff >= 100:
+        return 0
     if avg_text_len_diff <= 50:
         return 1
     brevity_coefficient = 1 - (avg_text_len_diff / assumed_ideal_sentence_len) + 0.5
@@ -608,21 +651,29 @@ def calculate_brevity_coefficient(text_lengths: List[float]) -> float:
 def curiosity_measure(
         proposed_questions: List[str], num_question_generation: int
     ) -> float:
-    embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L12-v2", device="cpu")
-    embeddings = embedder.encode(proposed_questions, device="cpu", convert_to_numpy=True)
-    clusterer = hdbscan.HDBSCAN()
-    clusterer.fit(embeddings)
-    num_clusters = clusterer.labels_.max()
-    num_outliers = len([x for x in clusterer.labels_ if x == -1])
-    num_unique_questions = num_clusters + num_outliers
-    text_lens = [len(x) for x in proposed_questions]
-    brevity_coefficient = calculate_brevity_coefficient(text_lens)
+    literally_unique_questions = list(set(proposed_questions))
+    literally_unique_count = len(literally_unique_questions)
+    if literally_unique_count > 10: # ensure at least 10 questions are "literally unique" to do clustering
+        embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L12-v2", device="cpu")
+        embeddings = embedder.encode(proposed_questions, device="cpu", convert_to_numpy=True)
+        clusterer = hdbscan.HDBSCAN(cluster_selection_method='leaf', allow_single_cluster=True)
+        clusterer.fit(embeddings)
+        num_clusters = clusterer.labels_.max() + 1 # labels start from 0
+        num_outliers = len([x for x in clusterer.labels_ if x == -1])
+        num_unique_questions = num_clusters + num_outliers
+        cluster_labels = clusterer.labels_.tolist()
+    else:
+        num_unique_questions = literally_unique_count
+        num_clusters = literally_unique_count
+        num_outliers = 0
+        cluster_dict = {q: idx for idx, q in enumerate(literally_unique_questions)}
+        cluster_labels = [cluster_dict[q] for q in proposed_questions]
     print("# curiosity_measure")
     print(f"num_clusters: {num_clusters}")
     print(f"num_outliers: {num_outliers}")
     print(f"num_unique_questions: {num_unique_questions}")
     print(f"num_question_generation: {num_question_generation}")
-    return brevity_coefficient * num_unique_questions / num_question_generation, clusterer.labels_
+    return num_unique_questions / num_question_generation, cluster_labels
 
 def knowledge_limit_awareness_measure(num_prompts_with_hallucination: int, num_total_prompts: int) -> float:
     print("# knowledge_limit_awareness_measure")
@@ -631,8 +682,10 @@ def knowledge_limit_awareness_measure(num_prompts_with_hallucination: int, num_t
     print()
     return num_prompts_with_hallucination / num_total_prompts
 
-def self_learning_capability_measure(curiosity_score: float, knowledge_limit_awareness_score: float) -> float:
-    return statistics.fmean([curiosity_score, knowledge_limit_awareness_score])
+def self_learning_capability_measure(proposed_questions: List[str], curiosity_score: float, knowledge_limit_awareness_score: float) -> float:
+    text_lens = [len(x) for x in proposed_questions]
+    brevity_coefficient = calculate_brevity_coefficient(text_lens)
+    return brevity_coefficient * statistics.fmean([curiosity_score, knowledge_limit_awareness_score]), brevity_coefficient
 
 def score_article_relevance_with_chatgpt(prompts: List[str], texts: List[str]):
     assert len(prompts) == len(texts)
@@ -844,8 +897,23 @@ def qa_evaluation_learned_data(
             **tokens, max_new_tokens=64, do_sample=False,
             pad_token_id=tokenizer.pad_token_id
         )
-        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True)
         decoded = [extract_response_fn(x) for x in decoded]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            decoded = [p.replace(spectok, '') for p in decoded]
         preds.extend(decoded)
 
     bleu = evaluate.load('bleu')
@@ -907,8 +975,23 @@ def qa_evaluation_benchmark(
             **tokens, max_new_tokens=64, do_sample=False,
             pad_token_id=tokenizer.pad_token_id
         )
-        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True)
         decoded = [extract_response_fn(x) for x in decoded]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            decoded = [p.replace(spectok, '') for p in decoded]
         preds.extend(decoded)
 
     bleu = evaluate.load('bleu')
@@ -926,3 +1009,179 @@ def qa_evaluation_benchmark(
         'benchmark_oracle_acc_text': oracle_scores_texts,
         'benchmark_oracle_acc': oracle_scores
     })
+
+def evaluate_hallucination(
+        topics, questions, tokenizer, model, prompt_fn, extract_response_fn,
+        pretrained_model_name=None, generation_config=None
+    ):
+    tmp_passages = []
+    tmp_samples = []
+    print("Producing passages and samples....")
+    for idx in tqdm(range(len(questions))):
+        passage = produce_passage(
+            tokenizer, model, prompt_fn, extract_response_fn,
+            questions[idx], pretrained_model_name, generation_config
+        )
+        print(passage)
+        samples = produce_samples(
+            tokenizer, model, prompt_fn, extract_response_fn,
+            questions[idx], pretrained_model_name, generation_config
+        )
+        print(f"len(samples): {len(samples)}")
+        tmp_passages.append(passage)
+        tmp_samples.append(samples)
+
+    h_scorer = HallucinationScorer()
+    after_training_result = []
+    print("Performing hallucination scoring....")
+    for idx in tqdm(range(len(questions))):
+        h_scorer_output = h_scorer.get_hallucination_score(
+            topics[idx], questions[idx], tmp_passages[idx], tmp_samples[idx]
+        )
+        after_training_result.append(h_scorer_output)
+        print(f"idx: {idx} | h_score: {h_scorer_output.average_score}")
+        print()
+
+    return [x.to_dict() for x in after_training_result]
+
+def qa_evaluation_benchmark_squad(
+        wandb_logger, model, tokenizer, prompt_fn, extract_response_fn, batch_size=16
+    ):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.eval()
+
+    def create_prompt(row):
+        content = f"You are a helpful assistant. As an input, you will receive two texts:\n\n##QUESTION: task definition;\n\n##CONTEXT: additional information that may help answering the task.\n\nWrite the exact answer to ##QUESTION as found in ##CONTEXT, otherwise write that the answer is not available.\n\n##QUESTION: {row['question']}\n\n##CONTEXT: {row['context']}"
+        messages = [
+            {"role": "user", "content": content}
+        ]
+        return tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+    ds = datasets.load_dataset('rajpurkar/squad', split='validation')
+    ds = ds.map(lambda x: {'formatted_prompt': create_prompt(x)})
+
+    ids = ds['id']
+    formatted_prompts = ds['formatted_prompt']
+    answers = ds['answers']
+
+    preds = []
+    num_batches = ceil(len(formatted_prompts) / batch_size)
+    for batch_idx in range(num_batches):
+        start = batch_idx * batch_size
+        end = start + batch_size
+        batch = formatted_prompts[start:end]
+        tokens = tokenizer(
+            batch,
+            padding=True,
+            add_special_tokens=False,
+            return_attention_mask=True,
+            return_tensors='pt'
+        ).to(device)
+        generated_ids = model.generate(
+            **tokens, max_new_tokens=256, do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True)
+        decoded = [extract_response_fn(x) for x in decoded]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            decoded = [p.replace(spectok, '') for p in decoded]
+        preds.extend(decoded)
+
+    squad_preds = [{'prediction_text': preds[idx], 'id': ids[idx]} for idx in range(len(ids))]
+    squad_refs = [{'answers': x} for x in answers]
+
+    squad_metric = evaluate.load('squad')
+    squad_res = squad_metric.compute(predictions=squad_preds, references=squad_refs)
+    wandb_logger.log({f'squad_{key}': val for key, val in squad_res.items()})
+
+    oracle_questions = ds['question']
+    oracle_answers = [x['text'] for x in answers]
+    oracle_preds = preds
+
+    oracle_scores_texts, oracle_scores = check_accuracy_with_chatgpt(oracle_questions, oracle_answers, oracle_preds)
+    oracle_scores_texts = {k: v for k, v in enumerate(oracle_scores_texts)}
+    oracle_scores = {k: v for k, v in enumerate(oracle_scores)}
+    wandb_logger.log({
+        'squad_oracle_acc_text': oracle_scores_texts,
+        'squad_oracle_acc': oracle_scores
+    })
+
+def qa_evaluation_benchmark_sst2(
+        wandb_logger, model, tokenizer, prompt_fn, extract_response_fn, batch_size=16
+    ):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.eval()
+
+    def create_prompt(row):
+        content = f"You are an expert in sentiment analysis. As an input, you will receive a text:\n\n##SENTENCE: text to be analyzed.\n\nRespond with POSITIVE if ##SENTENCE contains a positive sentiment, otherwise respond with NEGATIVE if ##SENTENCE contains a negative sentiment.\n\n##SENTENCE: {row['sentence']}"
+        messages = [
+            {"role": "user", "content": content}
+        ]
+        return tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+
+    ds = datasets.load_dataset('nyu-mll/glue', subset='sst2', split='validation')
+    ds = ds.map(lambda x: {'formatted_prompt': create_prompt(x)})
+
+    formatted_prompts = ds['formatted_prompt']
+    answers = ds['label']
+
+    preds = []
+    num_batches = ceil(len(formatted_prompts) / batch_size)
+    for batch_idx in range(num_batches):
+        start = batch_idx * batch_size
+        end = start + batch_size
+        batch = formatted_prompts[start:end]
+        tokens = tokenizer(
+            batch,
+            padding=True,
+            add_special_tokens=False,
+            return_attention_mask=True,
+            return_tensors='pt'
+        ).to(device)
+        generated_ids = model.generate(
+            **tokens, max_new_tokens=256, do_sample=False,
+            pad_token_id=tokenizer.pad_token_id
+        )
+        decoded = tokenizer.batch_decode(generated_ids, skip_special_tokens=False, clean_up_tokenization_spaces=True)
+        decoded = [extract_response_fn(x) for x in decoded]
+        all_special_tokens = []
+        try:
+            all_special_tokens.extend(tokenizer.all_special_tokens)
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer._additional_special_tokens.items()])
+        except:
+            pass
+        try:
+            all_special_tokens.extend([tok.content for id, tok in tokenizer.added_tokens_decoder.items()])
+        except:
+            pass
+        for spectok in all_special_tokens:
+            decoded = [p.replace(spectok, '') for p in decoded]
+        for y in decoded:
+            if 'POSITIVE' in y:
+                preds.append(1)
+            else:
+                preds.append(0)
+
+    glue_metric = evaluate.load('glue', 'sst2')
+    glue_res = glue_metric.compute(predictions=preds, references=answers)
+    wandb_logger.log({f'glue_sst2_{key}': val for key, val in glue_res.items()})

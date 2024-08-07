@@ -20,7 +20,7 @@
 
 ## Setup environment
 
-`sudo apt-get update; sudo apt-get -y install python-dev libxml2-dev libxslt-dev; pip3 install nltk; curl https://raw.githubusercontent.com/codelucas/newspaper/master/download_corpora.py | python3; pip3 uninstall -y lxml; CFLAGS="-O0" pip3 install lxml[html_clean]; pip3 install -r requirements.txt; python3 -m spacy download en_core_web_sm; pip3 install --upgrade torch torchvision torchaudio; pip3 install datasets==2.16; pip3 install bitsandbytes loralib peft trl`
+`sudo apt-get update; sudo apt-get -y install python-dev libxml2-dev libxslt-dev; pip3 install nltk; curl https://raw.githubusercontent.com/codelucas/newspaper/master/download_corpora.py | python3; pip3 uninstall -y lxml; CFLAGS="-O0" pip3 install lxml[html_clean]; pip3 install -r requirements.txt; python3 -m spacy download en_core_web_sm; pip3 install --upgrade torch torchvision torchaudio; pip3 install datasets==2.16; pip3 install bitsandbytes loralib peft trl; pip3 install packaging; pip3 uninstall -y ninja && pip install ninja; pip3 install flash-attn --no-build-isolation; pip3 install tiktoken; pip3 install huggingface_hub`
 
 ## Running an experiment
 
@@ -45,6 +45,7 @@ Each file in each of these subdirectories is a pickle file, which when loaded wi
 - "pretrained_model_name": str -- The name of the used model on HuggingFace
 - "curiosity_score": float -- The calculated Curiosity Score
 - "knowledge_limit_awareness_score": float -- The calculated Knowledge-Limit Awareness Score
+- "brevity_coefficient": float -- The calculated brevity coefficient
 - "self_learning_capability_score": float -- The calculated SLC Score
 - "proposed_questions": List[str] -- List of all questions the model proposed; the length is equal to len(prompts_with_hallucination) plus len(prompts_with_no_hallucination)
 - "proposed_questions_labels": List[int] -- List of question labels corresponding to proposed_questions, generated from hdbscan clustering during Knowledge-Limit Awareness Score calculation
